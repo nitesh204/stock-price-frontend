@@ -26,26 +26,26 @@ const isMarketOpen = () => {
   return isAfterOpen && isBeforeClose;
 };
 
-// Format prices to 2 decimal places
+
 const formatPrice = (price) => {
   const num = Number(price);
   if (isNaN(num)) return "--";
   return num.toFixed(2);
 };
 
-// Function to sort and deduplicate trades by timestamp (keep last trade per unique timestamp)
+
 function cleanData(trades) {
-  // Sort trades by timestamp ascending
+ 
   const sorted = [...trades].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   
-  // Deduplicate by timestamp (keep last trade of each timestamp)
+ 
   const seen = new Map();
   for (const trade of sorted) {
     const time = new Date(trade.timestamp).getTime();
     seen.set(time, trade);
   }
   
-  // Return array of trades sorted by timestamp (unique timestamps)
+
   return Array.from(seen.values()).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
 
@@ -101,18 +101,15 @@ export default function App() {
 
     // Check if new trade timestamp is exactly same, then compare price change
     if (newTimestamp.getTime() === new Date(lastTrade.timestamp).getTime()) {
-      // Only update if price changed even slightly 
       if (Math.abs(trade.price - lastTrade.price) < 0.001) {
-        // Price change too small, ignore
         return prev;
       }
-      // Replace last trade with the new one for the same timestamp but different price
       deltaRef.current = trade.price - lastTrade.price;
       const updatedData = [...cur.slice(0, -1), trade];
       return { ...prev, [selected]: updatedData };
     }
 
-    // New timestamp, add normally
+    // New timestamp adding normally
     deltaRef.current = trade.price - lastTrade.price;
     const updatedData = [...cur, trade];
     return { ...prev, [selected]: updatedData };
@@ -132,7 +129,7 @@ export default function App() {
     }
   }, [selected, marketIsOpen]);
 
-  // Clean data: sort and deduplicate before passing to chart
+  // Clean 
   const rows = cleanData(dataBySymbol[selected] || []).map(trade => ({
   ...trade,
   timestamp: new Date(trade.timestamp).getTime()
@@ -183,56 +180,55 @@ export default function App() {
         </div>
 
         <div className="chart-wrapper">
-<ResponsiveContainer width="100%" height="100%">
-  <ComposedChart data={rows} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
-    <XAxis
-      dataKey="timestamp"
-      tickFormatter={t => new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-      minTickGap={40}
-      stroke="#0c0c0cff"
-      tick={{ fontSize: 15 }}
-    />
-    <YAxis
-      yAxisId="left"
-      domain={['dataMin - 1', 'dataMax + 1']}
-      tickFormatter={v => formatPrice(v)}
-      stroke="#000000ff"
-      tick={{ fontSize: 12 }}
-    />
-    <YAxis
-      yAxisId="right"
-      orientation="right"
-      stroke="#939598ff"
-      tickFormatter={v => (v / 1000).toFixed(1) + "k"}
-      tick={{ fontSize: 12 }}
-    />
-    <Tooltip
-      formatter={(value, name) => name === "Price" ? formatPrice(value) : value}
-      labelFormatter={l => new Date(l).toLocaleString("en-IN")}
-      contentStyle={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-    />
-    <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 20 }} />
-    <Line
-      yAxisId="left"
-      type="monotone"
-      dataKey="price"
-      stroke="#338f94ff"
-      strokeWidth={2.5}
-      dot={false}
-      isAnimationActive={false}
-      name="Price"
-    />
-    <Bar
-      yAxisId="right"
-      dataKey="volume"
-      fill="#93a0adff"
-      name="Volume"
-      barSize={2}
-    />
-  </ComposedChart>
-</ResponsiveContainer>
-
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={rows} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
+            <XAxis
+              dataKey="timestamp"
+              tickFormatter={t => new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+              minTickGap={40}
+              stroke="#0c0c0cff"
+              tick={{ fontSize: 15 }}
+            />
+            <YAxis
+              yAxisId="left"
+              domain={['dataMin - 1', 'dataMax + 1']}
+              tickFormatter={v => formatPrice(v)}
+              stroke="#000000ff"
+              tick={{ fontSize: 12 }}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              stroke="#939598ff"
+              tickFormatter={v => (v / 1000).toFixed(1) + "k"}
+              tick={{ fontSize: 12 }}
+            />
+            <Tooltip
+              formatter={(value, name) => name === "Price" ? formatPrice(value) : value}
+              labelFormatter={l => new Date(l).toLocaleString("en-IN")}
+              contentStyle={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+            />
+            <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 20 }} />
+            <Line
+              yAxisId="left"
+              type="monotone"
+              dataKey="price"
+              stroke="#338f94ff"
+              strokeWidth={2.5}
+              dot={false}
+              isAnimationActive={false}
+              name="Price"
+            />
+            <Bar
+              yAxisId="right"
+              dataKey="volume"
+              fill="#93a0adff"
+              name="Volume"
+              barSize={2}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
         </div>
       </div>
     </div>
