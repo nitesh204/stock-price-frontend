@@ -1,39 +1,70 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
-  Tooltip, CartesianGrid, Legend, Area, Bar
+  Tooltip, CartesianGrid, Legend, Bar
 } from "recharts";
+import './App.css'; 
+
 
 const INITIAL_STOCKS = ["HDFCBANK.NS", "SBIN.NS", "RELIANCE.NS", "KPITTECH.NS"];
-const API = "http://localhost:5000";
+const API = process.env.REACT_APP_API_URL 
+
+const isMarketOpen = () => {
+  const now = new Date();
+  const timeZone = "Asia/Kolkata";
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+
+  const hour = parseInt(now.toLocaleString("en-US", { hour: 'numeric', hour12: false, timeZone }), 10);
+  const minute = parseInt(now.toLocaleString("en-US", { minute: 'numeric', timeZone }), 10);
+
+  const isAfterOpen = hour > 9 || (hour === 9 && minute >= 0);
+  const isBeforeClose = hour < 15 || (hour === 15 && minute <= 30);
+  return isAfterOpen && isBeforeClose;
+};
+
+// Format prices to 2 decimal places
+const formatPrice = (price) => {
+  const num = Number(price);
+  if (isNaN(num)) return "--";
+  return num.toFixed(2);
+};
+
+// Function to sort and deduplicate trades by timestamp (keep last trade per unique timestamp)
+function cleanData(trades) {
+  // Sort trades by timestamp ascending
+  const sorted = [...trades].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  
+  // Deduplicate by timestamp (keep last trade of each timestamp)
+  const seen = new Map();
+  for (const trade of sorted) {
+    const time = new Date(trade.timestamp).getTime();
+    seen.set(time, trade);
+  }
+  
+  // Return array of trades sorted by timestamp (unique timestamps)
+  return Array.from(seen.values()).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
 
 export default function App() {
   const [selected, setSelected] = useState(INITIAL_STOCKS[0]);
   const [dataBySymbol, setDataBySymbol] = useState({});
+  const [marketIsOpen, setMarketIsOpen] = useState(isMarketOpen());
+
   const socketRef = useRef(null);
   const deltaRef = useRef(0);
   const [, setRender] = useState(0);
 
-  // NEW: Ref to track if historical data is loading
-  const isHistoryLoading = useRef(false);
-
   useEffect(() => {
-    socketRef.current = io(API);
-    return () => socketRef.current?.disconnect();
+    setMarketIsOpen(isMarketOpen());
+    const interval = setInterval(() => setMarketIsOpen(isMarketOpen()), 60000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (!socketRef.current) return;
-
-    // NEW: Set loading flag to true before fetching data
-    isHistoryLoading.current = true;
-
-    socketRef.current.emit("joinStock", selected);
-
-    axios
-      .get(`${API}/api/trades/${selected}`)
+    axios.get(`${API}/api/trades/${selected}`)
       .then(res => {
         setDataBySymbol(prev => ({ ...prev, [selected]: res.data || [] }));
         if (res.data && res.data.length >= 2) {
@@ -43,113 +74,140 @@ export default function App() {
           setRender(r => r + 1);
         }
       })
-      .catch(err => console.error("History fetch error:", err))
-      .finally(() => {
-        // NEW: Set loading flag to false after data is loaded (or on error)
-        isHistoryLoading.current = false;
-      });
-      
-      const onTick = (trade) => {
-        if (isHistoryLoading.current || trade.symbol !== selected) return;
-
-        setDataBySymbol(prev => {
-          const cur = prev[selected] || [];
-
-          // ✅ Ignore duplicate timestamp
-          if (cur.length > 0 && new Date(cur[cur.length - 1].timestamp).getTime() === new Date(trade.timestamp).getTime()) {
-            return prev; // skip duplicate
-          }
-
-          const lastPrice = cur.length > 0 ? cur[cur.length - 1].price : trade.price;
-          deltaRef.current = trade.price - lastPrice;
-
-          const updatedData = [...cur, trade];
-          return { ...prev, [selected]: updatedData };
-        });
-
-      };
-
-    socketRef.current.on("newTrade", onTick);
-
-    return () => socketRef.current.off("newTrade", onTick);
+      .catch(err => console.error("History fetch error:", err));
   }, [selected]);
 
-  const rows = dataBySymbol[selected] || [];
+  useEffect(() => {
+    if (marketIsOpen) {
+      if (!socketRef.current) {
+        socketRef.current = io(API);
+        console.log("✅ Market open. Connecting to real-time feed.");
+      }
+      socketRef.current.emit("joinStock", selected);
+
+      const onTick = (trade) => {
+  if (trade.symbol !== selected) return;
+
+  setDataBySymbol(prev => {
+    const cur = prev[selected] || [];
+    if (cur.length === 0) {
+      deltaRef.current = 0;
+      return { ...prev, [selected]: [trade] };
+    }
+
+    const lastTrade = cur[cur.length - 1];
+    const newTimestamp = new Date(trade.timestamp);
+
+    // Check if new trade timestamp is exactly same, then compare price change
+    if (newTimestamp.getTime() === new Date(lastTrade.timestamp).getTime()) {
+      // Only update if price changed even slightly 
+      if (Math.abs(trade.price - lastTrade.price) < 0.001) {
+        // Price change too small, ignore
+        return prev;
+      }
+      // Replace last trade with the new one for the same timestamp but different price
+      deltaRef.current = trade.price - lastTrade.price;
+      const updatedData = [...cur.slice(0, -1), trade];
+      return { ...prev, [selected]: updatedData };
+    }
+
+    // New timestamp, add normally
+    deltaRef.current = trade.price - lastTrade.price;
+    const updatedData = [...cur, trade];
+    return { ...prev, [selected]: updatedData };
+  });
+};
+
+      socketRef.current.on("newTrade", onTick);
+      return () => {
+        socketRef.current?.off("newTrade", onTick);
+      };
+    } else {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+        console.log("❌ Market closed. Disconnected from real-time feed.");
+      }
+    }
+  }, [selected, marketIsOpen]);
+
+  // Clean data: sort and deduplicate before passing to chart
+  const rows = cleanData(dataBySymbol[selected] || []).map(trade => ({
+  ...trade,
+  timestamp: new Date(trade.timestamp).getTime()
+}));
+
+
   const last = rows.length ? rows[rows.length - 1] : null;
   const delta = deltaRef.current;
   const up = delta > 0;
   const down = delta < 0;
-  const priceColor = up ? "#27ae60" : down ? "#c0392b" : "#333";
+  const priceColor = up ? '#0ca678' : down ? '#f03e3e' : '#343a40';
 
-  // The JSX below is unchanged
   return (
-    <div style={{ fontFamily: "Inter, system-ui, Arial", background: "#f4f7f6", minHeight: "100vh", padding: 32 }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", background: '#fff', borderRadius: 20, padding: 30, boxShadow: '0 8px 32px rgba(0,0,0,0.05)' }}>
-        <header style={{ display: "flex", alignItems: "center", gap: 24, marginBottom: 30, flexWrap: 'wrap' }}>
-          <h1 style={{ fontWeight: 700, fontSize: 36, margin: 0, color: '#00796b' }}>
-            {selected.replace(".NS", "")}
-          </h1>
-          <div style={{ fontSize: 42, fontWeight: 800, color: priceColor }}>
-            {last?.price?.toFixed ? last.price.toFixed(2) : "--"}
-          </div>
-          {last && (
-            <div style={{ color: priceColor, fontWeight: 700, fontSize: 22, display: 'flex', alignItems: 'center', gap: 6 }}>
-              {up && "▲"}{down && "▼"}
-              <span>{Math.abs(delta).toFixed(2)}</span>
+    <div className="app-container">
+      <div className="content-wrapper">
+
+        <header className="header">
+          <div className="stock-info">
+            <h1 className="stock-title">{selected.replace(".NS", "")}</h1>
+            <div className="price-info">
+              <div className="last-price" style={{ color: priceColor }}>
+                {formatPrice(last?.price)}
+              </div>
+              {last && (
+                <div className={`price-delta ${up ? 'positive' : down ? 'negative' : ''}`}>
+                  {up ? "▲" : "▼"}
+                  <span>{formatPrice(Math.abs(delta))}</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+          <div className={`market-status ${marketIsOpen ? 'live' : 'closed'}`}>
+            <span className="status-dot"></span>
+            Market {marketIsOpen ? 'LIVE' : 'CLOSED'}
+          </div>
         </header>
 
-        <div style={{ marginBottom: 24, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <div className="selector-bar">
           {INITIAL_STOCKS.map(sym => (
-            <button key={sym} onClick={() => setSelected(sym)}
-              style={{
-                padding: "8px 20px", borderRadius: 24, fontWeight: 600, cursor: "pointer",
-                background: selected === sym ? "#26a69a" : "#e0f2f1",
-                color: selected === sym ? "#fff" : "#004d40",
-                border: 'none', boxShadow: selected === sym ? "0 4px 14px rgba(38,166,154,0.3)" : "none",
-                transition: 'all 0.3s',
-              }}>
+            <button
+              key={sym}
+              onClick={() => setSelected(sym)}
+              className={`selector-btn ${selected === sym ? 'active' : ''}`}
+            >
               {sym.replace(".NS", "")}
             </button>
           ))}
         </div>
 
-        <div
-          style={{
-            width: '100%',
-            height: 450,
-            background: "#e0f2f1",
-            borderRadius: 20,
-            padding: 0,           
-            boxSizing: 'border-box', 
-          }}
-        >
+        <div className="chart-wrapper">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={rows} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#b2dfdb" />
+            <LineChart data={rows} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
               <XAxis
                 dataKey="timestamp"
-                tickFormatter={t =>
-                  new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                }
+                tickFormatter={t => new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                 minTickGap={40}
-                stroke="#004d40"
+                stroke="#0c0c0cff"
+                tick={{ fontSize: 15 }}
               />
               <YAxis
                 yAxisId="left"
                 domain={['dataMin - 1', 'dataMax + 1']}
-                tickFormatter={v => Number(v).toFixed(2)}
-                stroke="#004d40"
+                tickFormatter={v => formatPrice(v)}
+                stroke="#000000ff"
+                tick={{ fontSize: 12 }}
               />
-              <YAxis 
-                yAxisId="right" 
-                orientation="right" 
-                stroke="#00897b"
-                tickFormatter={v => (v / 1000).toFixed(1) + "k"} 
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#939598ff"
+                tickFormatter={v => (v / 1000).toFixed(1) + "k"}
+                tick={{ fontSize: 12 }}
               />
               <Tooltip
-                formatter={v => Number(v).toFixed(2)}
+                formatter={(value, name) => name === "Price" ? formatPrice(value) : value}
                 labelFormatter={l => new Date(l).toLocaleString("en-IN")}
                 contentStyle={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               />
@@ -158,25 +216,22 @@ export default function App() {
                 yAxisId="left"
                 type="monotone"
                 dataKey="price"
-                stroke="#024a4aff"
+                stroke="#338f94ff"
                 strokeWidth={2.5}
                 dot={false}
                 isAnimationActive={false}
                 name="Price"
               />
-              <Bar 
-                yAxisId="right" 
-                dataKey="volume" 
-                fill="#0d0918ff" 
-                opacity={0.4}         
-                name="Volume" 
-                barSize={20}           
-                radius={[4, 4, 0, 0]}   
+              <Bar
+                yAxisId="right"
+                dataKey="volume"
+                fill="#383e44ff"
+                name="Volume"
+                barSize={20}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
-
       </div>
     </div>
   );
