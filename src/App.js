@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import {
+  ComposedChart,
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   Tooltip, CartesianGrid, Legend, Bar
 } from "recharts";
@@ -182,55 +183,56 @@ export default function App() {
         </div>
 
         <div className="chart-wrapper">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={rows} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={t => new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                minTickGap={40}
-                stroke="#0c0c0cff"
-                tick={{ fontSize: 15 }}
-              />
-              <YAxis
-                yAxisId="left"
-                domain={['dataMin - 1', 'dataMax + 1']}
-                tickFormatter={v => formatPrice(v)}
-                stroke="#000000ff"
-                tick={{ fontSize: 12 }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="#939598ff"
-                tickFormatter={v => (v / 1000).toFixed(1) + "k"}
-                tick={{ fontSize: 12 }}
-              />
-              <Tooltip
-                formatter={(value, name) => name === "Price" ? formatPrice(value) : value}
-                labelFormatter={l => new Date(l).toLocaleString("en-IN")}
-                contentStyle={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-              />
-              <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 20 }} />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="price"
-                stroke="#338f94ff"
-                strokeWidth={2.5}
-                dot={false}
-                isAnimationActive={false}
-                name="Price"
-              />
-              <Bar
-                yAxisId="right"
-                dataKey="volume"
-                fill="#383e44ff"
-                name="Volume"
-                barSize={20}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+<ResponsiveContainer width="100%" height="100%">
+  <ComposedChart data={rows} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
+    <XAxis
+      dataKey="timestamp"
+      tickFormatter={t => new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+      minTickGap={40}
+      stroke="#0c0c0cff"
+      tick={{ fontSize: 15 }}
+    />
+    <YAxis
+      yAxisId="left"
+      domain={['dataMin - 1', 'dataMax + 1']}
+      tickFormatter={v => formatPrice(v)}
+      stroke="#000000ff"
+      tick={{ fontSize: 12 }}
+    />
+    <YAxis
+      yAxisId="right"
+      orientation="right"
+      stroke="#939598ff"
+      tickFormatter={v => (v / 1000).toFixed(1) + "k"}
+      tick={{ fontSize: 12 }}
+    />
+    <Tooltip
+      formatter={(value, name) => name === "Price" ? formatPrice(value) : value}
+      labelFormatter={l => new Date(l).toLocaleString("en-IN")}
+      contentStyle={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+    />
+    <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 20 }} />
+    <Line
+      yAxisId="left"
+      type="monotone"
+      dataKey="price"
+      stroke="#338f94ff"
+      strokeWidth={2.5}
+      dot={false}
+      isAnimationActive={false}
+      name="Price"
+    />
+    <Bar
+      yAxisId="right"
+      dataKey="volume"
+      fill="#93a0adff"
+      name="Volume"
+      barSize={2}
+    />
+  </ComposedChart>
+</ResponsiveContainer>
+
         </div>
       </div>
     </div>
