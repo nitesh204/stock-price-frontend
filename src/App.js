@@ -10,6 +10,13 @@ import './App.css';
 
 
 const INITIAL_STOCKS = ["HDFCBANK.NS", "SBIN.NS", "RELIANCE.NS", "KPITTECH.NS"];
+const STOCK_NAMES = {
+  HDFCBANK: "HDFC Bank Ltd.",
+  SBIN: "State Bank of India",
+  RELIANCE: "Reliance Industries Ltd.",
+  KPITTECH: "KPIT Technologies"
+};
+
 const API = process.env.REACT_APP_API_URL 
 
 const isMarketOpen = () => {
@@ -148,7 +155,9 @@ export default function App() {
 
         <header className="header">
           <div className="stock-info">
-            <h1 className="stock-title">{selected.replace(".NS", "")}</h1>
+            <h1 className="stock-title">
+              {STOCK_NAMES[selected.replace(".NS", "")] || selected.replace(".NS", "")}
+            </h1>
             <div className="price-info">
               <div className="last-price" style={{ color: priceColor }}>
                 {formatPrice(last?.price)}
